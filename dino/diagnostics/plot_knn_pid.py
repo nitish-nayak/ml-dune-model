@@ -2,12 +2,7 @@
 Pixel-level PID k-NN analysis of DINO features.
 
 Pixels are labelled by the primary contributing particle (frame_pid_1st) and
-grouped into four physics classes:
-
-    0  mu±     PDG ±13
-    1  EM      PDG ±11, 22        (electrons, positrons, photons)
-    2  proton  PDG ±2212
-    3  other   everything else with valid pid1 truth
+grouped into different classes.
 
 The features .npz must have been extracted with --pixel_truth so that the
 `pid_labels` array is present.
@@ -316,6 +311,7 @@ def run(
     device: torch.device,
     batch_size: int,
     seed: int = 42,
+    plot_scatter: bool = False
 ):
     print(f"Loading {npz_path}")
     data = np.load(npz_path)
@@ -350,6 +346,17 @@ def run(
         print(f"    {name:<8} {int(counts[c]):>8,}  (collected {int((pix_cls==c).sum()):,})")
     print(f"  Total sampled : {len(pix_cls):,}")
 
+    # Sanity check: student and teacher features should differ
+    s_norm = s_pix / np.linalg.norm(s_pix, axis=1, keepdims=True).clip(1e-8)
+    t_norm = t_pix / np.linalg.norm(t_pix, axis=1, keepdims=True).clip(1e-8)
+    cos_sim = (s_norm * t_norm).sum(axis=1).mean()
+    l2_diff = np.linalg.norm(s_pix - t_pix, axis=1).mean()
+    print(f"\n  student/teacher mean cosine similarity : {cos_sim:.4f}  (1.0 = identical)")
+    print(f"  student/teacher mean L2 distance       : {l2_diff:.4f}  (0.0 = identical)")
+    if cos_sim > 0.9999:
+        print("  WARNING: student and teacher features are effectively identical — "
+              "checkpoint may be from epoch 0 or the same backbone was used for both.")
+
     print(f"\nComputing k-NN purity (device={device}, batch={batch_size}) ...")
     s_purity_k = _knn_purity_batched(s_pix, pix_cls, ks, device, batch_size)
     t_purity_k = _knn_purity_batched(t_pix, pix_cls, ks, device, batch_size)
@@ -365,11 +372,12 @@ def run(
     _plot_confusion(s_preds, t_preds, pix_cls, knn_k, out_dir, tag,
                     "knn_pid_confusion.png", "Pixel PID")
 
-    print("\nRunning dimensionality reduction ...")
-    emb_all, rname = _reduce_2d(np.concatenate([s_pix, t_pix], axis=0), method=reducer)
-    N = len(pix_cls)
-    _plot_scatter(emb_all[:N], emb_all[N:], pix_cls, rname, out_dir, tag,
-                  "knn_pid_scatter.png", "Pixel PID")
+    if plot_scatter:
+        print("\nRunning dimensionality reduction ...")
+        emb_all, rname = _reduce_2d(np.concatenate([s_pix, t_pix], axis=0), method=reducer)
+        N = len(pix_cls)
+        _plot_scatter(emb_all[:N], emb_all[N:], pix_cls, rname, out_dir, tag,
+                    "knn_pid_scatter.png", "Pixel PID")
 
 
 def main():
@@ -397,6 +405,8 @@ def main():
     parser.add_argument("--batch_size", type=int, default=2048,
                         help="Query batch size for GPU k-NN (default: 2048)")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--plot_scatter", action="store_true",
+                        help="Whether to plot 2-D scatter (UMAP/t-SNE)")
 
     args = parser.parse_args()
 
@@ -422,6 +432,7 @@ def main():
         device=device,
         batch_size=args.batch_size,
         seed=args.seed,
+        plot_scatter=args.plot_scatter
     )
 
     print("\nDone.")
