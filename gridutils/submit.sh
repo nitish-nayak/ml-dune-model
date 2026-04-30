@@ -49,12 +49,7 @@ config=$(cd "$(dirname "$config")" && pwd)/$(basename "$config")  # absolute
 
 # Pull run_name out of the JSON configuration
 # This is to make sure things are consistent
-read run_name < <(python3 - "$config" <<'PY'
-import json, sys
-c = json.load(open(sys.argv[1]))
-print(c.get("run_name", ""))
-PY
-)
+run_name=$(jq -r '.run_name' "$config")
 
 if [ -z "$run_name" ] || [ "$run_name" = "None" ]; then
   echo "ERROR: 'run_name' in $config is empty; set a run_name and retry." >&2
