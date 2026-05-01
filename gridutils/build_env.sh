@@ -35,7 +35,7 @@ wget ${WARP_WHEEL}
 echo "Installing other run dependencies..."
 /lbne/u/${USER}/.local/bin/uv pip install fire h5py
 
-## There is no pre-built wheel for flash-attention for torch1.20+cu128
+## There is no pre-built wheel for flash-attention for torch2.10+cu128
 ## this needs to be build from source on GPU by submitting a "build job"
 ## basically: submit this script, commenting the previous lines and 
 ## uncommenting the ones below (note: it will take ~1.5 hours)
