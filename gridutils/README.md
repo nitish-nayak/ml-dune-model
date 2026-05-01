@@ -39,7 +39,7 @@ Edit the env vars at the top of `build_env.sh` (`CUDA`, `TORCH_REL`, `WARPCONV_R
 ## Submitting a training job
 
 There are two relevant files: 
-- [trainjob.sh](trainjob.sh): training script that runs on the workder node
+- [trainjob.sh](trainjob.sh): training script that runs on the worker node
 - [submit.sh](submit.sh): submission script that prepares the `.sub` file and runs `condor_submit`.
 
 Training jobs can be submitted by:
