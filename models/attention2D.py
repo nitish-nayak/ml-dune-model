@@ -199,7 +199,10 @@ class SpatialFeatureAttention2D(Attention):
             feats, offsets = x.features, x.offsets
             M, C = feats.shape[:2]
             if pos_enc_cat is not None:
-                feats = feats + pos_enc_cat
+                pos_enc_cat_scaled = pos_enc_cat * 0.05
+                #  print("Comparing norms, feat vs pos_enc : ", feats.norm(p=2), pos_enc_cat_scaled.norm(p=2))
+                #  print("Comparing shapes, feat vs pos_enc : ", feats.shape, pos_enc_cat_scaled.shape)
+                feats = feats + pos_enc_cat_scaled
 
             qkv = self.qkv(feats).reshape(M, 3, self.num_heads, C // self.num_heads)
             if qkv.dtype not in [torch.float16, torch.bfloat16]:

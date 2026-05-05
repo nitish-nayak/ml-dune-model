@@ -426,6 +426,7 @@ def main(
             iteration = (epoch - 1) * epoch_len + batch_idx
             xs = xs.to(device)
 
+            xs.feature_tensor.div_(1000.) # Matteo's fix for NaNs
             # Apply schedules
             lr_val = lr_schedule[iteration]
             wd_val = wd_schedule[iteration]

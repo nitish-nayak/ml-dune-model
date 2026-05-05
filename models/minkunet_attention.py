@@ -41,7 +41,7 @@ class MinkUNetSparseAttention(nn.Module):
     def __init__(self, *,
                  spatial_encoding: bool = True,
                  flash_attention: bool = True,
-                 encoding_dim: int = 32,
+                 encoding_dim: int = 18,
                  encoding_range: float = 125.0,
                  **kwargs,):
         super().__init__()
