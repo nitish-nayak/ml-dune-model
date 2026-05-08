@@ -47,7 +47,7 @@ class APASparseDataset(Dataset):
 
     def __init__(
         self,
-        rootdir: Union[str, Path],
+        datadir: Union[str, Path],
         apa: int,
         view: str,
         use_cache: bool = True,
@@ -57,7 +57,7 @@ class APASparseDataset(Dataset):
     ):
         """
         Args:
-            rootdir:     Root directory to scan recursively for HDF5 files.
+            datadir:     Root directory to scan recursively for HDF5 files.
             apa:         APA number (matched against the filename suffix).
             view:        Wire-plane view to load — one of the keys in view_ranges
                          (default: "U", "V", or "W").
@@ -71,7 +71,7 @@ class APASparseDataset(Dataset):
                          Other options in new files: "frame_pid_1st",
                          "frame_trackid_1st", etc.
         """
-        self.rootdir   = Path(rootdir)
+        self.datadir   = Path(datadir)
         self.apa       = int(apa)
         self.frame_name = frame_name
 
@@ -91,10 +91,10 @@ class APASparseDataset(Dataset):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
 
-        # Include a short hash of the resolved rootdir so that two datasets
+        # Include a short hash of the resolved datadir so that two datasets
         # with the same APA/view but different paths never share a cache file.
         root_hash = hashlib.md5(
-            str(self.rootdir.resolve()).encode()
+            str(self.datadir.resolve()).encode()
         ).hexdigest()[:8]
         self.cache_file = (
             self.cache_dir
@@ -104,7 +104,7 @@ class APASparseDataset(Dataset):
         self.samples: List[APASampleIndex] = self._scan()
         if not self.samples:
             raise RuntimeError(
-                f"No sparse samples found under {self.rootdir} for APA {self.apa}"
+                f"No sparse samples found under {self.datadir} for APA {self.apa}"
             )
 
     # -------------------------
@@ -133,7 +133,7 @@ class APASparseDataset(Dataset):
         print(f"Cache does not exist: {self.cache_file} -- generating new one!")
         pattern = f"*anode{self.apa}.h5"
 
-        for fp in self.rootdir.rglob(pattern):
+        for fp in self.datadir.rglob(pattern):
             if not fp.is_file():
                 continue
 

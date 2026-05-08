@@ -72,7 +72,7 @@ class APASparseMetaDataset(APASparseDataset):
 
     def __init__(
         self,
-        rootdir: Union[str, Path],
+        datadir: Union[str, Path],
         apa: int,
         view: str,
         use_cache: bool = True,
@@ -83,7 +83,7 @@ class APASparseMetaDataset(APASparseDataset):
         return_pixel_truth: bool = False,
     ):
         super().__init__(
-            rootdir=rootdir,
+            datadir=datadir,
             apa=apa,
             view=view,
             use_cache=use_cache,

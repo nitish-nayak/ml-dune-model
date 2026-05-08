@@ -207,7 +207,7 @@ def main(
     # Dataset (sparse, with full event metadata)
     print(f"\nLoading dataset from {cfg.datadir} ...")
     dataset = APASparseMetaDataset(
-        rootdir=cfg.datadir,
+        datadir=cfg.datadir,
         apa=cfg.apa,
         view=cfg.view,
         use_cache=True,

@@ -20,6 +20,7 @@ from loader.collate import voxels_collate_fn
 from loader.splits import train_val_split, Subset
 
 from .config import DINOConfig
+from .transforms import FeatureLogTransform
 from .masking import SparseVoxelMasker
 from .cropping import CropConfig, SparseCropper
 from .loss import PixelDINOLoss
@@ -29,7 +30,7 @@ from .debug import DINODebugger
 
 
 @torch.no_grad()
-def validate_epoch(model, val_loader, augmenter, loss_fn, device, augmentation_mode="masking"):
+def validate_epoch(model, val_loader, augmenter, loss_fn, device, normalizer, augmentation_mode="masking"):
     """
     Compute mean DINO loss on the validation set.
 
@@ -50,6 +51,8 @@ def validate_epoch(model, val_loader, augmenter, loss_fn, device, augmentation_m
 
     for xs in val_loader:
         xs = xs.to(device)
+        if normalizer is not None:
+            xs = normalizer(xs)
 
         if augmentation_mode == "cropping":
             n_global = augmenter.cfg.n_global
@@ -127,6 +130,9 @@ def main(
     warmup_epochs: int = 1,
     datadir: str = "/nfs/data/1/yuhw/cffm-data/prod-jay-100k-truth-2026-02-27",
     cache_dir: str = "./data",
+    use_log_transform: bool = True,
+    feat_min_val: float = 3.75,
+    feat_max_val: float = 83861.2,
     output_dir: str = "./dino_checkpoints",
     save_every: int = 10,
     device: str = "cuda",
@@ -235,6 +241,10 @@ def main(
         weight_decay_end=weight_decay_end,
         warmup_epochs=warmup_epochs,
         epochs=epochs,
+        datadir=datadir,
+        use_log_transform=use_log_transform,
+        feat_min_val=feat_min_val,
+        feat_max_val=feat_max_val,
         batch_size=batch_size,
         datadir=datadir,
         cache_dir=cache_dir,
@@ -292,7 +302,7 @@ def main(
     # ============ Data ============
     print("\nLoading dataset:", cfg.datadir)
     dataset = APASparseDataset(
-        rootdir=cfg.datadir,
+        datadir=cfg.datadir,
         apa=cfg.apa,
         view=cfg.view,
         use_cache=True,
@@ -350,6 +360,8 @@ def main(
     if model.student_head is not None:
         student_params += list(model.student_head.parameters())
     optimizer = optim.AdamW(student_params, lr=lr, weight_decay=weight_decay)
+
+    normalizer = FeatureLogTransform(cfg.feat_min_val, cfg.feat_max_val) if cfg.use_log_transform else None
 
     masker = SparseVoxelMasker(mask_ratio=mask_ratio)
 
@@ -425,6 +437,8 @@ def main(
         for batch_idx, xs in enumerate(train_loader):
             iteration = (epoch - 1) * epoch_len + batch_idx
             xs = xs.to(device)
+            if normalizer is not None:
+                xs = normalizer(xs)
 
             xs.feature_tensor.div_(1000.) # Matteo's fix for NaNs
             # Apply schedules
