@@ -246,7 +246,6 @@ def main(
         feat_min_val=feat_min_val,
         feat_max_val=feat_max_val,
         batch_size=batch_size,
-        datadir=datadir,
         cache_dir=cache_dir,
         output_dir=output_dir,
         save_every=save_every,

@@ -19,6 +19,7 @@ class DINOConfig:
     n_subset: int = -1                # -1 = full dataset; otherwise cap at N samples
     batch_size: int = 16
     num_workers: int = 4
+    cache_dir: str = "./data"           # directory for cached dataset index .pt file
     use_log_transform: bool = True     # apply FeatureLogTransform to raw charge before model
     feat_min_val: float = 3.75        # 2nd percentile of raw charge [ADC]; anchors y = -1
     feat_max_val: float = 83861.2     # 99.999th percentile of raw charge [ADC]; anchors y = +1
