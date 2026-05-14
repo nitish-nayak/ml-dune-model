@@ -286,6 +286,11 @@ def main(
     print(f"  crop_heatmap_power     = {cfg.crop_heatmap_power}")
     print(f"  crop_min_active_pixels = {cfg.crop_min_active_pixels}")
 
+    print("Data normalization:")
+    print(f"  use_log_transform = {cfg.use_log_transform}")
+    print(f"  feat_min_val      = {cfg.feat_min_val}")
+    print(f"  feat_max_val      = {cfg.feat_max_val}")
+
     print("Loss:")
     print(f"  type                = {cfg.loss_type}")
     print(f"  center_momentum     = {cfg.center_momentum}")

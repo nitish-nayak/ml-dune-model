@@ -9,7 +9,10 @@
   "n_subset": -1,
   "batch_size": 30,
   "num_workers": 4,
-  
+  "use_log_transform": true,
+  "feat_min_val": 3.75,
+  "feat_max_val": 83861.2,
+
   "backbone_name": "attn_default",
   "encoding_range": 320,
   "feature_dim": 64,
