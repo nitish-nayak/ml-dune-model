@@ -8,9 +8,9 @@ The features .npz must have been extracted with --pixel_truth so that the
 `pid_labels` array is present.
 
 Gamma pixels (PDG 22) are further split into two sub-classes:
-  - blip  : isolated photon deposit — small connected cluster of gamma pixels
+  - blip  : isolated photon deposit — small connected cluster of gamma + e± pixels
              (cluster size <= --blip_max_pixels)
-  - EM    : shower-producing photon — large cluster, grouped with e+/-
+  - EM    : shower-producing photon — large cluster co-located with e±
 
 Pixels are collected with **stratified sampling**: images are visited in
 random order and pixels are drawn per-class until each class reaches
@@ -73,8 +73,10 @@ def _classify_gammas(
 ) -> np.ndarray:
     """
     For each gamma pixel determine whether it is an isolated blip or part of
-    an EM shower, using connected-component analysis on pixel (channel, tick)
-    positions within each image.
+    an EM shower, using connected-component analysis on gamma + e± pixel
+    positions within each image.  Cluster size counts all EM pixels (gamma +
+    e±) so that a gamma co-located with shower electrons is not mis-labelled
+    as a blip.
 
     Returns an int32 array of length N_pixels:
       CLS_BLIP  — isolated gamma (small cluster)
@@ -99,15 +101,18 @@ def _classify_gammas(
         if len(gamma_local) == 0:
             continue
 
-        n = len(gamma_local)
-        gamma_pos = pos[gamma_local].astype(float)
+        elec_local = np.where(np.isin(pdg, list(_EM_PDGS)))[0]
 
-        if n == 1:
+        # Gammas first so comp_labels_em[:n_gamma] gives gamma component IDs
+        em_local = np.concatenate([gamma_local, elec_local])
+        n_em     = len(em_local)
+        em_pos   = pos[em_local].astype(float)
+
+        if n_em == 1:
             result[start + gamma_local[0]] = CLS_BLIP
             continue
 
-        # Build adjacency from pairs within connect_dist
-        tree  = cKDTree(gamma_pos)
+        tree  = cKDTree(em_pos)
         pairs = tree.query_pairs(connect_dist)
 
         if pairs:
@@ -116,16 +121,17 @@ def _classify_gammas(
             r = ra + ca
             c = ca + ra
             adj = csr_matrix(
-                (np.ones(len(r), dtype=np.float32), (r, c)), shape=(n, n)
+                (np.ones(len(r), dtype=np.float32), (r, c)), shape=(n_em, n_em)
             )
         else:
-            adj = csr_matrix((n, n), dtype=np.float32)
+            adj = csr_matrix((n_em, n_em), dtype=np.float32)
 
-        _, comp_labels = connected_components(adj, directed=False)
-        unique, counts  = np.unique(comp_labels, return_counts=True)
-        comp_size = dict(zip(unique.tolist(), counts.tolist()))
+        _, comp_labels_em = connected_components(adj, directed=False)
+        unique, counts    = np.unique(comp_labels_em, return_counts=True)
+        comp_size         = dict(zip(unique.tolist(), counts.tolist()))
 
-        for local_i, comp in zip(gamma_local, comp_labels):
+        n_gamma = len(gamma_local)
+        for local_i, comp in zip(gamma_local, comp_labels_em[:n_gamma]):
             size = comp_size[comp]
             result[start + local_i] = CLS_BLIP if size <= blip_max_pixels else CLS_EM
 
