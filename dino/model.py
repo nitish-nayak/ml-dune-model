@@ -224,59 +224,76 @@ class DINODuneModel(nn.Module):
             return backbone_out, self.student_head(backbone_out)
         return backbone_out, backbone_out
 
-    def forward_backward_crops(self, xs: Voxels, cropper, loss_fn):
+    def forward_backward(
+        self,
+        xs: Voxels,
+        cropper,
+        masker,
+        loss_fn,
+        use_cropping: bool = False,
+        use_masking: bool = True,
+    ):
         """
-        Forward pass and backward update using activity-aware multi-crop augmentation.
+        Unified forward pass and backward update.
 
-        Follows the standard DINO multi-crop strategy:
-          - Teacher sees only the n_global global crops (large views).
-          - Student sees all crops (global + local).
-          - Loss is computed for every (student_k, teacher_g) pair where k != g,
-            restricted to voxels that fall inside both crops (spatial intersection).
-
-        Spatial intersection is found by coordinate matching on the backbone
-        outputs — no index tracking or LUTs from the cropper are needed.
+        Views are always treated as a list:
+          - Cropping enabled:  SparseCropper produces n_global + n_local views.
+          - Cropping disabled: the original full-image batch is the single view.
+        Masking (random pixel dropout) is applied independently to each student
+        view when enabled; teacher views are never masked.
+        Loss is summed over all (student_k, teacher_g) pairs.  Same-index pairs
+        (k == g) are skipped only when multiple views exist; with a single view
+        the masking pair (k=0, g=0) is the only valid pair and must be kept.
 
         Args:
-            xs:      batched Voxels (from the sparse dataloader, already on device)
-            cropper: SparseCropper instance (provides n_global via cropper.cfg.n_global)
-            loss_fn: PixelDINOLoss instance
+            xs:           batched Voxels (from the sparse dataloader, on device)
+            cropper:      SparseCropper instance, or None when use_cropping=False
+            masker:       SparseVoxelMasker instance (used only when use_masking=True)
+            loss_fn:      PixelDINOLoss instance
+            use_cropping: enable activity-aware multi-crop augmentation
+            use_masking:  enable random pixel dropout on student views
 
         Returns:
             loss_value:           mean scalar loss across all (student, teacher) pairs
-            teacher_entropy, student_entropy, kl, cov_penalty: averaged diagnostics
-            student_backbone_out: backbone output for the last student crop (logging)
-            teacher_backbone_out: backbone output for the first teacher global crop (logging)
-            student_out:          head output for the last student crop (logging)
-            teacher_out:          head output for the first teacher global crop (logging)
+            teacher_entropy, student_entropy, kl, cov_penalty, var_penalty: averaged diagnostics
+            student_backbone_out: backbone output of the last student view (for logging)
+            teacher_backbone_out: backbone output of the first teacher global view (for logging)
+            student_out:          head output of the last student view (for logging)
+            teacher_out:          head output of the first teacher global view (for logging)
         """
-        n_global = cropper.cfg.n_global
+        # ── 1. Generate views ──────────────────────────────────────────────
+        if use_cropping:
+            all_views = cropper(xs)
+            n_global  = cropper.cfg.n_global
+        else:
+            all_views = [xs]
+            n_global  = 1
+        n_crops = len(all_views)
 
-        crops = cropper(xs)
-        n_crops = len(crops)
-
-        # Teacher forward — global crops only, no gradient
+        # ── 2. Teacher: encode global views, frozen, no gradient ───────────
         with torch.no_grad():
-            teacher_encoded = [self.encode_teacher(crops[g]) for g in range(n_global)]
+            teacher_encoded = [self.encode_teacher(all_views[g]) for g in range(n_global)]
 
+        # ── 3. Student: encode all views (optionally masked), compute loss ─
         total_loss = None
         sum_t_ent = sum_s_ent = sum_kl = sum_cov = sum_var = 0.0
         n_metric = n_pairs = 0
 
         for k in range(n_crops):
-            student_backbone_k, student_out_k = self.encode_student(crops[k])
+            view_k = masker(all_views[k])[0] if use_masking else all_views[k]
+            student_backbone_k, student_out_k = self.encode_student(view_k)
 
             for g in range(n_global):
-                if k == g:
-                    continue  # skip same-view pairs (matches original DINO)
+                # Skip same-index pairs only when multiple views exist
+                # (with one view, the single masking pair must not be skipped)
+                if k == g and n_crops > 1:
+                    continue
 
                 teacher_backbone_g, teacher_out_g = teacher_encoded[g]
 
-                # Spatial intersection via coordinate matching
                 s_feats, s_bb_feats, t_feats, counts = match_and_gather(
                     student_out_k, student_backbone_k, teacher_out_g,
                 )
-
                 loss_kg, t_ent, s_ent, kl, cov, var = loss_fn(
                     s_feats, s_bb_feats, t_feats, counts,
                 )
@@ -303,7 +320,7 @@ class DINODuneModel(nn.Module):
         avg_cov   = sum_cov   / n_pairs  if sum_cov != 0.0 else None
         avg_var   = sum_var   / n_pairs  if sum_var != 0.0 else None
 
-        # Logging: last student crop, first teacher global crop
+        # Logging: last student view, first teacher global view
         teacher_backbone_log, teacher_out_log = teacher_encoded[0]
         return (
             total_loss.item(),
@@ -311,43 +328,3 @@ class DINODuneModel(nn.Module):
             student_backbone_k, teacher_backbone_log,
             student_out_k, teacher_out_log,
         )
-
-    def forward_backward(self, xs: Voxels, masker, loss_fn):
-        """
-        Forward pass and backward update.
-
-        Args:
-            xs: batched Voxels (from the sparse dataloader, already on device)
-            masker: SparseVoxelMasker instance
-            loss_fn: PixelDINOLoss instance
-
-        Returns:
-            loss_value:      scalar loss
-            teacher_entropy: H(P_t) per batch (dino loss only, else None)
-            student_entropy: H(P_s) per batch (dino loss only, else None)
-            kl:              KL(P_t||P_s) per batch (dino loss only, else None)
-            cov_penalty:          covariance penalty (if enabled, else None)
-            student_backbone_out: raw 64-dim backbone output (before head)
-            student_out:          student Voxels output (after head if present)
-            teacher_out:          teacher Voxels output (after head if present)
-        """
-        # Masking on Voxels: returns reduced student Voxels (kept_indices no longer needed)
-        xs_student, _ = masker(xs)
-
-        # Teacher forward (full Voxels, frozen, no grad)
-        with torch.no_grad():
-            teacher_backbone_out, teacher_out = self.encode_teacher(xs)
-
-        # Student forward (masked Voxels, trainable)
-        student_backbone_out, student_out = self.encode_student(xs_student)
-
-        # Match student/teacher by coordinates and compute loss
-        s_feats, s_bb_feats, t_feats, counts = match_and_gather(
-            student_out, student_backbone_out, teacher_out,
-        )
-        loss, teacher_entropy, student_entropy, kl, cov_penalty, var_penalty = loss_fn(
-            s_feats, s_bb_feats, t_feats, counts,
-        )
-        loss.backward()
-
-        return loss.item(), teacher_entropy, student_entropy, kl, cov_penalty, var_penalty, student_backbone_out, teacher_backbone_out, student_out, teacher_out

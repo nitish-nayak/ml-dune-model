@@ -34,7 +34,8 @@ class DINOConfig:
     proj_head_n_layers: int = 2          # number of MLP layers before the final FC
 
     # ============ Augmentation ============
-    augmentation_mode: str = "masking"   # "masking" or "cropping"
+    use_cropping: bool = True             # enable activity-aware multi-crop augmentation
+    use_masking: bool = True              # enable random pixel dropout on student views
     mask_ratio: float = 0.5              # fraction of active pixels to mask (masking mode)
     crop_n_global: int = 2               # number of global crops per image
     crop_n_local: int = 4                # number of local crops per image
