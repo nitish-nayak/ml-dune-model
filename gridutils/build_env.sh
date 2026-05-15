@@ -3,7 +3,7 @@
 export CUDA=cu128
 export TORCH_REL="2.10.0"
 export TORCH_RELL="2.10"
-export WARPCONV_REL="1.7.3"
+export WARPCONV_REL="1.7.8"
 export TORCH_CUDA_ARCH_LIST="8.9"
 export UV_LINK_MODE=copy
 
