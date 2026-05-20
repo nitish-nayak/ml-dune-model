@@ -434,7 +434,6 @@ def main(
             if normalizer is not None:
                 xs = normalizer(xs)
 
-            xs.feature_tensor.div_(1000.) # Matteo's fix for NaNs
             # Apply schedules
             lr_val = lr_schedule[iteration]
             wd_val = wd_schedule[iteration]
